@@ -278,7 +278,8 @@ def build_excel_bytes(result_json):
             for cell in ws[k_ltr][1:]:
                 cell.number_format = "#,##0"
             for ci, cn in enumerate(grp.columns):
-                ml = max(grp[cn].astype(str).map(len).max(), len(str(cn)))
+                col_max = grp[cn].astype(str).str.len().max()
+                ml = max(int(col_max) if pd.notna(col_max) else 0, len(str(cn)))
                 ws.column_dimensions[chr(65 + ci)].width = min(ml + 2, 40)
     output.seek(0)
     return output.getvalue()
