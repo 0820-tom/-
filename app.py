@@ -284,6 +284,25 @@ def build_excel_bytes(result_json):
     output.seek(0)
     return output.getvalue()
 
+@st.cache_data(show_spinner=False)
+def build_excel_bytes_single(result_json):
+    df = pd.read_json(io.StringIO(result_json), orient="split")
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        sname = "Cleaned"
+        df.to_excel(writer, index=False, sheet_name=sname)
+        ws    = writer.sheets[sname]
+        k_idx = df.columns.get_loc("Adj. Billing Amt")
+        k_ltr = chr(65 + k_idx)
+        for cell in ws[k_ltr][1:]:
+            cell.number_format = "#,##0"
+        for ci, cn in enumerate(df.columns):
+            col_max = df[cn].astype(str).str.len().max()
+            ml = max(int(col_max) if pd.notna(col_max) else 0, len(str(cn)))
+            ws.column_dimensions[chr(65 + ci)].width = min(ml + 2, 40)
+    output.seek(0)
+    return output.getvalue()
+
 # ── 메인 실행 ─────────────────────────────────────────────────
 if source_file and rate_file:
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -342,15 +361,29 @@ if source_file and rate_file:
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            with st.spinner("📦 다운로드 파일 준비 중..."):
-                excel_bytes = build_excel_bytes(st.session_state["result_json"])
-            st.download_button(
-                label="📥 정제된 데이터 다운로드 (Excel)",
-                data=excel_bytes,
-                file_name=f"CRScube_Cleaned_v2.0_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            tab1, tab2 = st.tabs(["📄 탭 하나로 합치기", "📑 SUBJID별 탭 분리"])
+
+            with tab1:
+                with st.spinner("📦 파일 준비 중..."):
+                    excel_single = build_excel_bytes_single(st.session_state["result_json"])
+                st.download_button(
+                    label="📥 하나의 탭으로 다운로드",
+                    data=excel_single,
+                    file_name=f"CRScube_Cleaned_Single_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
+            with tab2:
+                with st.spinner("📦 파일 준비 중..."):
+                    excel_split = build_excel_bytes(st.session_state["result_json"])
+                st.download_button(
+                    label="📥 탭 분리해서 다운로드",
+                    data=excel_split,
+                    file_name=f"CRScube_Cleaned_Split_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 else:
     st.info("👈 왼쪽 사이드바에서 파일을 업로드해주세요.")
     with st.expander("📖 사용 방법"):
