@@ -53,6 +53,7 @@ st.markdown("""
 - **TBD**: 값 있으면 기타(LF)로 출력
 - **CA 필수항목**: EDC·IWRS·PRO·독립적평가자는 0원도 포함
 - **결과**: SUBJID 앞 2글자 기준 시트 분리 출력
+- **청구예정일 필터**: 시작일 ~ 종료일 범위로 결과 필터링 가능
 """)
 
 # ── 사이드바: 파일 업로드 ─────────────────────────────────────
@@ -67,6 +68,30 @@ rate_file = st.sidebar.file_uploader(
     "2️⃣ 환율 파일 (.xlsx / .xls)",
     type=["xlsx", "xls"],
     help="Exchange Rate 또는 StdExRate 시트 포함"
+)
+
+# ── 사이드바: 청구예정일 필터 ─────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.header("📅 청구예정일 필터")
+
+use_date_filter = st.sidebar.checkbox(
+    "청구예정일 기준 기간 필터 사용",
+    value=False
+)
+
+today = datetime.date.today()
+default_start = today.replace(day=1)
+
+start_date = st.sidebar.date_input(
+    "시작일",
+    value=default_start,
+    disabled=not use_date_filter
+)
+
+end_date = st.sidebar.date_input(
+    "종료일",
+    value=today,
+    disabled=not use_date_filter
 )
 
 # ── 파일 읽기 헬퍼 ───────────────────────────────────────────
@@ -305,6 +330,10 @@ def build_excel_bytes_single(result_json):
 
 # ── 메인 실행 ─────────────────────────────────────────────────
 if source_file and rate_file:
+    if use_date_filter and start_date > end_date:
+        st.error("❌ 시작일이 종료일보다 늦을 수 없습니다.")
+        st.stop()
+
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("🚀 데이터 정제 시작", use_container_width=True, type="primary"):
@@ -331,6 +360,20 @@ if source_file and rate_file:
                     st.stop()
 
                 result_df = process_combined_logic(df_dg, df_ca, df_cb, df_cx, df_rate)
+
+                if use_date_filter and not result_df.empty:
+                    expected_dates = pd.to_datetime(result_df["청구예정일(C)"], errors="coerce").dt.date
+                    before_cnt = len(result_df)
+                    result_df = result_df[
+                        expected_dates.between(start_date, end_date, inclusive="both")
+                    ].copy()
+                    after_cnt = len(result_df)
+
+                    st.info(
+                        f"📅 청구예정일 기준 필터 적용: "
+                        f"{start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')} "
+                        f"(**{before_cnt:,}건 → {after_cnt:,}건**)"
+                    )
 
                 if not result_df.empty:
                     st.session_state["result_df"]   = result_df
@@ -390,6 +433,7 @@ else:
         st.markdown("""
         1. **원본 파일** (.xlsb / .xlsx / .xls) 업로드 — DG, CA, CB, CX 시트 포함
         2. **환율 파일** (.xlsx / .xls) 업로드 — Exchange Rate 또는 StdExRate 시트 포함
-        3. **데이터 정제 시작** 버튼 클릭
-        4. 처리 완료 후 Excel 다운로드 (SUBJID 앞 2글자 기준 시트 분리)
+        3. **필요 시 청구예정일 필터 설정** — 시작일 ~ 종료일 지정
+        4. **데이터 정제 시작** 버튼 클릭
+        5. 처리 완료 후 Excel 다운로드 (SUBJID 앞 2글자 기준 시트 분리)
         """)
